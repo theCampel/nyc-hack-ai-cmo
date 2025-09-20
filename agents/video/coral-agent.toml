@@ -1,7 +1,7 @@
 [agent]
 name = "video"
 version = "0.0.1"
-description = "Agent that generates narrated videos using ElevenLabs (TTS) + FAL (veed/fabric-1.0)"
+description = "Agent that composites product imagery via FAL product-holding, narrates with ElevenLabs (TTS) + renders video with FAL (veed/fabric-1.0)"
 
 [options.MODEL_API_KEY]
 type = "string"
@@ -18,6 +18,7 @@ description = "ElevenLabs API key for TTS"
 [options.ELEVENLABS_VOICE_ID]
 type = "string"
 description = "Optional ElevenLabs voice id (default Rachel)"
+default = "21m00Tcm4TlvDq8ikWAM"
 
 [options.MODEL_NAME]
 type = "string"
