@@ -1,0 +1,36 @@
+[agent]
+name = "onboarding"
+version = "0.0.1"
+description = "OnboardingAgent that analyzes product data to define ICPs, marketing angles, and create a knowledge base for downstream agents"
+
+[options.MODEL_API_KEY]
+type = "string"
+description = "API key for the model provider"
+
+[options.MODEL_NAME]
+type = "string"
+description = "What model to use (e.g 'gpt-5')"
+default = "gpt-5"
+
+[options.MODEL_PROVIDER]
+type = "string"
+description = "What model provider to use (e.g 'openai', etc)"
+default = "openai"
+
+[options.MODEL_MAX_TOKENS]
+type = "string"
+description = "Max tokens to use"
+default = "16000"
+
+[options.MODEL_TEMPERATURE]
+type = "string"
+description = "What model temperature to use"
+default = "0.3"
+
+[options.TIMEOUT_MS]
+type = "string"
+description = "Connection/tool timeouts in ms"
+default = "300"
+
+[runtimes.executable]
+command = ["bash", "-c", "./run_agent.sh main.py"]
