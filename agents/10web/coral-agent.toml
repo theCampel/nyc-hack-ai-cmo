@@ -1,0 +1,40 @@
+[agent]
+name = "tenweb"
+version = "0.1.0"
+description = "Agent that can create AI-powered WordPress websites via 10Web (default region: us-central1-c)"
+
+[options.MODEL_API_KEY]
+type = "string"
+description = "API key for the model provider"
+
+[options.TENWEB_API_KEY]
+type = "string"
+description = "10Web API key (x-api-key)"
+
+[options.MODEL_NAME]
+type = "string"
+description = "What model to use (e.g 'gpt-4.1')"
+default = "gpt-4.1"
+
+[options.MODEL_PROVIDER]
+type = "string"
+description = "What model provider to use (e.g 'openai', etc)"
+default = "openai"
+
+[options.MODEL_MAX_TOKENS]
+type = "string"
+description = "Max tokens to use"
+default = "16000"
+
+[options.MODEL_TEMPERATURE]
+type = "string"
+description = "What model temperature to use"
+default = "0.3"
+
+[options.TIMEOUT_MS]
+type = "string"
+description = "Connection/tool timeouts in ms"
+default = "300000"
+
+[runtimes.executable]
+command = ["bash", "-c", "./run_agent.sh main.py"]
