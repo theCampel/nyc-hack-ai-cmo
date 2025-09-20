@@ -30,11 +30,13 @@ async def create_agent(coral_tools, agent_tools):
             2. If the instruction asks to create a website, extract: business_name, business_description, business_type (optional), region (optional). Defaults: business_type="business", region="us-central1-c".
             3. Call create_ai_website with those fields. If business_description or business_name is missing, ask a clarifying question via coral_send_message first and wait again.
             4. Parse the tool result (text may include a trailing raw=JSON) to extract website_url, admin_url, admin_username, admin_password. If website_url is missing but website_id exists, inform the user and include website_id and any error.
-            5. Compose a concise response including these fields explicitly:
+            4.1. If you have an email (from TENWEB_AUTOLOGIN_EMAIL env or by asking the sender), call generate_autologin_url to include a one-click admin login link that does not need a password.
+            5. Compose a concise response including these fields explicitly (include autologin if available):
                - Website URL: <website_url>
                - Admin URL: <admin_url>
                - Username: <admin_username>
                - Password: <admin_password>
+               - Autologin URL: <autologin_url> (if available)
             6. Use coral_send_message with: threadId=<threadId>, mentions=[<senderId>], content=<your composed response>.
             7. If any error occurs, send a brief error summary with any available details using coral_send_message to the same thread/sender.
             8. Wait for 2 seconds and repeat from step 1.
@@ -262,6 +264,19 @@ def tenweb_create_ai_website(
             "result": result,
             "derived": {"website_url": website_url, "admin_url": admin_url},
         }
+        # Optionally generate auto-login link if email is provided via env
+        autologin_email = os.getenv("TENWEB_AUTOLOGIN_EMAIL")
+        if autologin_email and website_id and website_url:
+            try:
+                auto = _generate_autologin_token(website_id, website_url)
+                token = auto.get("token") or auto.get("data", {}).get("token")
+                if token:
+                    autologin_url = f"{website_url}/wp-admin/?twb_wp_login_token={token}&email={urllib.parse.quote(autologin_email)}"
+                    summary.append(f"- Autologin URL (5 min valid): {autologin_url}")
+                    raw["derived"]["autologin_url"] = autologin_url
+            except Exception:
+                pass
+
         return "\n".join(summary) + "\n\nraw=" + json.dumps(raw)
     except requests.HTTPError as he:
         details = he.response.text if he.response is not None else str(he)
@@ -345,10 +360,53 @@ def tenweb_generate_subdomain() -> str:
         return f"ERROR generating subdomain: {str(e)}"
 
 
+class AutoLoginArgs(BaseModel):
+    website_id: int = Field(..., description="10Web website ID")
+    website_url: str = Field(..., description="Base website URL (e.g., https://mysite.10web.club)")
+    email: str = Field(..., description="Email to use for autologin (existing admin or will create one)")
+
+
+def _generate_autologin_token(website_id: int, website_url: str) -> dict:
+    api_key = _require_api_key()
+    if not api_key:
+        raise ValueError("TENWEB_API_KEY not set")
+    admin_url = f"{website_url.rstrip('/')}/wp-admin"
+    url = f"{API_BASE_URL}/v1/account/websites/{website_id}/single?admin_url={urllib.parse.quote(admin_url)}"
+    resp = requests.get(url, headers={"x-api-key": api_key})
+    resp.raise_for_status()
+    try:
+        return resp.json()
+    except Exception:
+        return {"raw": resp.text}
+
+
+def tenweb_generate_autologin_url(website_id: int, website_url: str, email: str) -> str:
+    """Return a one-click autologin URL for the WP admin, valid for ~5 minutes."""
+    try:
+        data = _generate_autologin_token(website_id, website_url)
+        token = data.get("token") or (data.get("data") or {}).get("token")
+        if token:
+            autologin_url = f"{website_url.rstrip('/')}/wp-admin/?twb_wp_login_token={token}&email={urllib.parse.quote(email)}"
+            return json.dumps({
+                "status": "ok",
+                "autologin_url": autologin_url,
+                "note": "Token is single-use and expires in ~5 minutes",
+            })
+        return json.dumps({"status": "error", "message": "Token not found", "raw": data})
+    except requests.HTTPError as he:
+        return json.dumps({
+            "status": "error",
+            "http": he.response.status_code if he.response else None,
+            "details": he.response.text if he.response is not None else str(he),
+        })
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+
 def tenweb_tools():
     return [
         StructuredTool.from_function(
-            name="tenweb_create_ai_website",
+            name="create_ai_website",
             description=(
                 "Create an AI-generated WordPress website on 10Web. "
                 "Required: business_name, business_description. Optional: business_type, subdomain, "
@@ -357,6 +415,15 @@ def tenweb_tools():
             ),
             func=tenweb_create_ai_website,
             args_schema=CreateAIWebsiteArgs,
+        ),
+        StructuredTool.from_function(
+            name="generate_autologin_url",
+            description=(
+                "Generate a one-click admin autologin URL for a website (no password needed). "
+                "Required: website_id, website_url, email (via TENWEB_AUTOLOGIN_EMAIL env or pass to agent)."
+            ),
+            func=tenweb_generate_autologin_url,
+            args_schema=AutoLoginArgs,
         ),
         StructuredTool.from_function(
             name="tenweb_get_account_websites",
