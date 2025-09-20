@@ -1,0 +1,48 @@
+[agent]
+name = "video"
+version = "0.0.1"
+description = "Agent that generates narrated videos using ElevenLabs (TTS) + FAL (veed/fabric-1.0)"
+
+[options.MODEL_API_KEY]
+type = "string"
+description = "API key for the model provider"
+
+[options.FAL_KEY]
+type = "string"
+description = "FAL API key for fal-client"
+
+[options.ELEVENLABS_API_KEY]
+type = "string"
+description = "ElevenLabs API key for TTS"
+
+[options.ELEVENLABS_VOICE_ID]
+type = "string"
+description = "Optional ElevenLabs voice id (default Rachel)"
+
+[options.MODEL_NAME]
+type = "string"
+description = "What model to use (e.g 'gpt-4.1')"
+default = "gpt-4.1"
+
+[options.MODEL_PROVIDER]
+type = "string"
+description = "What model provider to use (e.g 'openai', etc)"
+default = "openai"
+
+[options.MODEL_MAX_TOKENS]
+type = "string"
+description = "Max tokens to use"
+default = "16000"
+
+[options.MODEL_TEMPERATURE]
+type = "string"
+description = "What model temperature to use"
+default = "0.3"
+
+[options.TIMEOUT_MS]
+type = "string"
+description = "Connection/tool timeouts in ms"
+default = "300"
+
+[runtimes.executable]
+command = ["bash", "-c", "./run_agent.sh main.py"]

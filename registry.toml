@@ -9,3 +9,9 @@ path = "agents/interface"
 
 [[local-agent]]
 path = "agents/onboarding"
+
+[[local-agent]]
+path = "agents/10web"
+
+[[local-agent]]
+path = "agents/video"
