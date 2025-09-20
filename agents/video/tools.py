@@ -8,7 +8,12 @@ from langchain_core.tools import StructuredTool
 
 from config import get_settings, ensure_env_for_fal
 from elevenlabs_client import synthesize_speech_to_file, ElevenLabsError
-from fal_runner import upload_file_to_fal, run_fabric, get_hardcoded_image_url
+from fal_runner import (
+    upload_file_to_fal,
+    run_fabric,
+    get_hardcoded_image_url,
+    run_product_holding,
+)
 
 
 class GenerateVideoArgs(BaseModel):
@@ -16,8 +21,9 @@ class GenerateVideoArgs(BaseModel):
     image_url: Optional[str] = Field(
         default=None,
         description=(
-            "Image URL used as the video background. If omitted, the agent "
-            "uploads its bundled 480x640 JPEG to FAL and uses that."
+            "Image URL used as the video background. If omitted, the agent uploads its bundled "
+            "test/product assets to the Product Holding model and uses the resulting URL "
+            "(falling back to the test image if needed)."
         ),
     )
     resolution: Literal["480p", "720p"] = Field(
@@ -49,14 +55,47 @@ def _generate_video_impl(
         flush=True,
     )
 
-    # Resolve image_url: if not provided, upload our bundled JPEG to FAL.
     if not image_url:
+        extra_arguments = (
+            dict(settings.product_holding_extra_args)
+            if settings.product_holding_extra_args
+            else {}
+        )
+        log_args = extra_arguments if extra_arguments else None
         try:
-            image_url = get_hardcoded_image_url()
+            print(
+                f"[video.generate_video] invoking product holding with extra_arguments={log_args}",
+                flush=True,
+            )
+            holding_result = run_product_holding(
+                model_id=settings.product_holding_model,
+                extra_arguments=log_args,
+                wait=True,
+            )
+            candidate_url = holding_result.get("image_url") or holding_result.get("source_image_url")
+            if candidate_url:
+                image_url = candidate_url
+                print(
+                    f"[video.generate_video] product holding produced image_url={candidate_url}",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[video.generate_video] product holding returned no image url, fallback to bundled image. raw keys={list((holding_result or {}).keys())}",
+                    flush=True,
+                )
+                image_url = get_hardcoded_image_url()
         except Exception as e:
-            print(f"[video.generate_video] failed to get hardcoded image url: {e}", flush=True)
-            return f"ERROR: Failed to upload bundled image to FAL: {e}"
-    print(f"[video.generate_video] using image_url={image_url}", flush=True)
+            print(f"[video.generate_video] product holding invocation failed: {e}", flush=True)
+            try:
+                image_url = get_hardcoded_image_url()
+            except Exception as upload_error:
+                print(f"[video.generate_video] failed to get fallback image url: {upload_error}", flush=True)
+                return f"ERROR: Failed to prepare background image: {upload_error}"
+    else:
+        print(f"[video.generate_video] using provided image_url={image_url}", flush=True)
+
+    print(f"[video.generate_video] final image_url={image_url}", flush=True)
 
     if not settings.elevenlabs_api_key:
         return "ERROR: ELEVENLABS_API_KEY is not set"
@@ -114,8 +153,10 @@ def get_video_tools() -> list[StructuredTool]:
         func=_generate_video_impl,
         name="generate_video",
         description=(
-            "Generate a narrated video from text using ElevenLabs (TTS) and FAL veed/fabric-1.0. "
-            "Inputs: text, image_url, resolution (480p|720p), optional voice_id, wait (bool)."
+            "Generate a narrated video from text. By default the agent blends its bundled test "
+            "image with the product image via FAL's product-holding model, narrates with ElevenLabs, and "
+            "composes the final video through FAL veed/fabric-1.0. Inputs: text, image_url, "
+            "resolution (480p|720p), optional voice_id, wait (bool)."
         ),
         args_schema=GenerateVideoArgs,
         return_direct=False,

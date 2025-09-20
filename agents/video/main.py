@@ -82,7 +82,7 @@ async def main():
 
     coral_params = {
         "agentId": agentID,
-        "agentDescription": "An agent that generates narrated videos using ElevenLabs (TTS) and FAL (veed/fabric-1.0)"
+        "agentDescription": "An agent that composites product imagery via FAL product-holding, narrates with ElevenLabs (TTS) and renders video using FAL (veed/fabric-1.0)",
     }
 
     query_string = urllib.parse.urlencode(coral_params)
