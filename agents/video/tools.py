@@ -18,14 +18,8 @@ from fal_runner import (
 
 class GenerateVideoArgs(BaseModel):
     text: str = Field(..., description="Text to synthesize with ElevenLabs")
-    image_url: Optional[str] = Field(
-        default=None,
-        description=(
-            "Image URL used as the video background. If omitted, the agent uploads its bundled "
-            "test/product assets to the Product Holding model and uses the resulting URL "
-            "(falling back to the test image if needed)."
-        ),
-    )
+    person_image_url: str = Field(..., description="URL of the person image (required)")
+    product_image_url: str = Field(..., description="URL of the product image (required)")
     resolution: Literal["480p", "720p"] = Field(
         default="480p",
         description="Video resolution; one of: 480p, 720p",
@@ -42,7 +36,8 @@ class GenerateVideoArgs(BaseModel):
 
 def _generate_video_impl(
     text: str,
-    image_url: Optional[str] = None,
+    person_image_url: str,
+    product_image_url: str,
     resolution: str = "480p",
     voice_id: Optional[str] = None,
     wait: bool = True,
@@ -54,48 +49,25 @@ def _generate_video_impl(
         f"[video.generate_video] env: FAL_KEY={'yes' if settings.fal_key else 'no'}, ELEVENLABS_API_KEY={'yes' if settings.elevenlabs_api_key else 'no'}, voice_id={(voice_id or settings.elevenlabs_voice_id)}",
         flush=True,
     )
-
-    if not image_url:
-        extra_arguments = (
-            dict(settings.product_holding_extra_args)
-            if settings.product_holding_extra_args
-            else {}
+    
+    print(f"[video.generate_video] person_image_url={person_image_url}, product_image_url={product_image_url}", flush=True)
+    
+    # Use product holding model to composite person + product images
+    try:
+        print("[video.generate_video] invoking product holding to composite images...", flush=True)
+        holding_result = run_product_holding(
+            person_image_url=person_image_url,
+            product_image_url=product_image_url,
+            wait=True,
         )
-        log_args = extra_arguments if extra_arguments else None
-        try:
-            print(
-                f"[video.generate_video] invoking product holding with extra_arguments={log_args}",
-                flush=True,
-            )
-            holding_result = run_product_holding(
-                model_id=settings.product_holding_model,
-                extra_arguments=log_args,
-                wait=True,
-            )
-            candidate_url = holding_result.get("image_url") or holding_result.get("source_image_url")
-            if candidate_url:
-                image_url = candidate_url
-                print(
-                    f"[video.generate_video] product holding produced image_url={candidate_url}",
-                    flush=True,
-                )
-            else:
-                print(
-                    f"[video.generate_video] product holding returned no image url, fallback to bundled image. raw keys={list((holding_result or {}).keys())}",
-                    flush=True,
-                )
-                image_url = get_hardcoded_image_url()
-        except Exception as e:
-            print(f"[video.generate_video] product holding invocation failed: {e}", flush=True)
-            try:
-                image_url = get_hardcoded_image_url()
-            except Exception as upload_error:
-                print(f"[video.generate_video] failed to get fallback image url: {upload_error}", flush=True)
-                return f"ERROR: Failed to prepare background image: {upload_error}"
-    else:
-        print(f"[video.generate_video] using provided image_url={image_url}", flush=True)
-
-    print(f"[video.generate_video] final image_url={image_url}", flush=True)
+        final_image_url = holding_result.get("image_url") or holding_result.get("source_image_url")
+        if not final_image_url:
+            print(f"[video.generate_video] product holding returned no image url. raw keys={list((holding_result or {}).keys())}", flush=True)
+            return f"ERROR: Product holding failed to composite images. Result: {holding_result}"
+        print(f"[video.generate_video] product holding produced final_image_url={final_image_url}", flush=True)
+    except Exception as e:
+        print(f"[video.generate_video] product holding invocation failed: {e}", flush=True)
+        return f"ERROR: Failed to composite person and product images: {e}"
 
     if not settings.elevenlabs_api_key:
         return "ERROR: ELEVENLABS_API_KEY is not set"
@@ -124,7 +96,7 @@ def _generate_video_impl(
     print("[video.generate_video] submitting veed/fabric-1.0 job...", flush=True)
     try:
         result = run_fabric(
-            image_url=image_url,
+            image_url=final_image_url,
             audio_url=audio_url,
             resolution=resolution,
             wait=wait,
@@ -153,10 +125,10 @@ def get_video_tools() -> list[StructuredTool]:
         func=_generate_video_impl,
         name="generate_video",
         description=(
-            "Generate a narrated video from text. By default the agent blends its bundled test "
-            "image with the product image via FAL's product-holding model, narrates with ElevenLabs, and "
-            "composes the final video through FAL veed/fabric-1.0. Inputs: text, image_url, "
-            "resolution (480p|720p), optional voice_id, wait (bool)."
+            "Generate a narrated video from text using two required images (person and product). "
+            "The agent composites the person holding the product via FAL's product-holding model, "
+            "narrates with ElevenLabs TTS, and creates the final video through FAL veed/fabric-1.0. "
+            "Required: text, person_image_url, product_image_url. Optional: resolution (480p|720p), voice_id, wait (bool)."
         ),
         args_schema=GenerateVideoArgs,
         return_direct=False,

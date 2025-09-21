@@ -155,6 +155,8 @@ def run_product_holding(
     model_id: Optional[str] = None,
     model_image_path: Optional[str | Path] = None,
     product_image_path: Optional[str | Path] = None,
+    person_image_url: Optional[str] = None,
+    product_image_url: Optional[str] = None,
     extra_arguments: Optional[dict[str, Any]] = None,
     wait: bool = True,
 ) -> dict[str, Any]:
@@ -162,12 +164,18 @@ def run_product_holding(
     if not model_name:
         raise RuntimeError("Product Holding model is not configured; set PRODUCT_HOLDING_MODEL")
 
-    if model_image_path:
+    # Handle person image - prioritize URL over path
+    if person_image_url:
+        person_url = person_image_url
+    elif model_image_path:
         person_url = upload_file_to_fal(str(model_image_path))
     else:
         person_url = get_hardcoded_image_url()
 
-    if product_image_path:
+    # Handle product image - prioritize URL over path
+    if product_image_url:
+        product_url = product_image_url
+    elif product_image_path:
         product_url = upload_file_to_fal(str(product_image_path))
     else:
         product_url = get_product_image_url()
